@@ -1,0 +1,22 @@
+/* styles.css */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, 'Segoe UI', monospace; background: #0f172a; color: #e2e8f0; }
+.app-container { display: flex; height: 100vh; overflow: hidden; }
+.sidebar { width: 280px; background: #1e293b; border-right: 1px solid #334155; overflow-y: auto; }
+.sidebar.right { border-right: none; border-left: 1px solid #334155; }
+.chat-workspace { flex: 1; background: #0f172a; display: flex; flex-direction: column; }
+.placeholder { padding: 2rem; text-align: center; color: #64748b; }
+
+/* 右侧面板独有样式 */
+.automation-bar { padding: 1rem; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+.mode-switch { display: flex; gap: 0.5rem; }
+.mode-btn { background: #334155; border: none; padding: 0.25rem 0.75rem; border-radius: 0.5rem; color: #cbd5e1; cursor: pointer; font-size: 0.75rem; font-weight: 500; }
+.mode-btn.active { background: #3b82f6; color: white; }
+.diagnosis-control { padding: 1rem; }
+.primary-btn { background: #3b82f6; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.5rem; width: 100%; cursor: pointer; font-weight: 500; }
+.report-container { padding: 1rem; flex: 1; overflow-y: auto; }
+.empty-state { color: #64748b; text-align: center; padding: 2rem; }
+.confirm-card { position: fixed; bottom: 2rem; right: 2rem; width: 320px; background: #1e293b; border: 1px solid #475569; border-radius: 1rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); padding: 1rem; z-index: 50; }
+.confirm-card.hidden { display: none; }
+.card-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+.secondary { background: #334155; color: white; border: none; padding: 0.25rem 0.75rem; border-radius: 0.375rem; cursor: pointer; }
