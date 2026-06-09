@@ -1,8 +1,6 @@
 // js/right-panel.js
-import { store } from './store.js';
+import { API_BASE, store } from './store.js';
 import { parseSSEStream } from './sse.js';
-
-const API_BASE = 'http://localhost:9900/api';
 
 // 用于存储 Chart 实例，以便更新时销毁
 let severityChart = null;
