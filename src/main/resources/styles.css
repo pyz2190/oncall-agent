@@ -7,16 +7,87 @@ body { font-family: system-ui, -apple-system, 'Segoe UI', monospace; background:
 .chat-workspace { flex: 1; background: #0f172a; display: flex; flex-direction: column; }
 .placeholder { padding: 2rem; text-align: center; color: #64748b; }
 
-/* 右侧面板独有样式 */
+/* 右侧面板原有样式 */
 .automation-bar { padding: 1rem; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
 .mode-switch { display: flex; gap: 0.5rem; }
 .mode-btn { background: #334155; border: none; padding: 0.25rem 0.75rem; border-radius: 0.5rem; color: #cbd5e1; cursor: pointer; font-size: 0.75rem; font-weight: 500; }
 .mode-btn.active { background: #3b82f6; color: white; }
 .diagnosis-control { padding: 1rem; }
 .primary-btn { background: #3b82f6; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.5rem; width: 100%; cursor: pointer; font-weight: 500; }
+.primary-btn i { margin-right: 0.5rem; }
 .report-container { padding: 1rem; flex: 1; overflow-y: auto; }
 .empty-state { color: #64748b; text-align: center; padding: 2rem; }
-.confirm-card { position: fixed; bottom: 2rem; right: 2rem; width: 320px; background: #1e293b; border: 1px solid #475569; border-radius: 1rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); padding: 1rem; z-index: 50; }
+.confirm-card { position: fixed; bottom: 2rem; right: 2rem; width: 320px; background: #1e293b; border: 1px solid #475569; border-radius: 1rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); padding: 1rem; z-index: 50; backdrop-filter: blur(4px); }
 .confirm-card.hidden { display: none; }
 .card-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
 .secondary { background: #334155; color: white; border: none; padding: 0.25rem 0.75rem; border-radius: 0.375rem; cursor: pointer; }
+.secondary i, .primary i { margin-right: 0.25rem; }
+
+/* 新增：诊断报告卡片样式 */
+.alert-card, .rootcause-card, .logs-card, .steps-card, .stats-card {
+    background: #1e293b;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #334155;
+    transition: all 0.2s;
+}
+.card-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 0.5rem;
+}
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.badge.critical { background: #dc2626; color: white; }
+.badge.warning { background: #f59e0b; color: black; }
+.badge.info { background: #3b82f6; color: white; }
+.log-evidence {
+    background: #0f172a;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    font-family: monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.steps-list {
+    list-style: none;
+    padding-left: 0;
+}
+.steps-list li {
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.steps-list li input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+}
+.collapsible {
+    cursor: pointer;
+    user-select: none;
+}
+.collapsible-content {
+    display: none;
+    margin-top: 0.5rem;
+}
+.collapsible-content.open {
+    display: block;
+}
+.chart-container {
+    margin-top: 0.5rem;
+    height: 200px;
+}
