@@ -1,60 +1,60 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OnCall Agent · 人机协作运维控制台</title>
-  <link rel="stylesheet" href="styles.css">
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!-- 可选 Font Awesome 6 (免费图标库) -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnCall Agent · 人机协作运维控制台</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- 可选 Font Awesome 6 (免费图标库) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
 <div class="app-container">
-  <!-- 左侧边栏（成员 C） -->
-  <aside class="sidebar left" id="leftSidebar">
-    <div class="placeholder">左侧栏（会话/上传）<br>成员 C 开发</div>
-  </aside>
+    <!-- 左侧边栏（成员 C） -->
+    <aside class="sidebar left" id="leftSidebar">
+        <div class="placeholder">左侧栏（会话/上传）<br>成员 C 开发</div>
+    </aside>
 
-  <!-- 中间工作区（成员 A） -->
-  <main class="chat-workspace" id="chatWorkspace">
-    <div class="placeholder">中间聊天区<br>成员 A 开发</div>
-  </main>
+    <!-- 中间工作区（成员 A） -->
+    <main class="chat-workspace" id="chatWorkspace">
+        <div class="placeholder">中间聊天区<br>成员 A 开发</div>
+    </main>
 
-  <!-- 右侧洞察面板（成员 B） -->
-  <aside class="sidebar right" id="rightPanel">
-    <div class="automation-bar">
-      <span class="label">档位</span>
-      <div class="mode-switch">
-        <button data-mode="manual" class="mode-btn">Manual</button>
-        <button data-mode="confirm" class="mode-btn active">Confirm</button>
-        <button data-mode="auto" class="mode-btn">Auto</button>
-      </div>
-    </div>
+    <!-- 右侧洞察面板（成员 B） -->
+    <aside class="sidebar right" id="rightPanel">
+        <div class="automation-bar">
+            <span class="label">档位</span>
+            <div class="mode-switch">
+                <button data-mode="manual" class="mode-btn">Manual</button>
+                <button data-mode="confirm" class="mode-btn active">Confirm</button>
+                <button data-mode="auto" class="mode-btn">Auto</button>
+            </div>
+        </div>
 
-    <div class="diagnosis-control">
-      <button id="runAIOpsBtn" class="primary-btn"><i class="fas fa-chart-line"></i> 运行 AIOps 诊断</button>
-    </div>
+        <div class="diagnosis-control">
+            <button id="runAIOpsBtn" class="primary-btn"><i class="fas fa-chart-line"></i> 运行 AIOps 诊断</button>
+        </div>
 
-    <div id="reportContainer" class="report-container">
-      <div class="empty-state"><i class="fas fa-info-circle"></i> 点击上方按钮，获取诊断报告</div>
-    </div>
+        <div id="reportContainer" class="report-container">
+            <div class="empty-state"><i class="fas fa-info-circle"></i> 点击上方按钮，获取诊断报告</div>
+        </div>
 
-    <!-- 确认卡浮层 -->
-    <div id="confirmCard" class="confirm-card hidden">
-      <div class="card-header"><i class="fas fa-exclamation-triangle"></i> 确认操作</div>
-      <div class="card-body">
-        <p><strong><i class="fas fa-tools"></i> 工具：</strong> <span id="confirmToolName"></span></p>
-        <p><strong><i class="fas fa-shield-alt"></i> 风险等级：</strong> <span id="confirmRisk"></span></p>
-        <p id="confirmDesc"></p>
-      </div>
-      <div class="card-actions">
-        <button id="rejectBtn" class="secondary"><i class="fas fa-times"></i> 拒绝</button>
-        <button id="approveBtn" class="primary"><i class="fas fa-check"></i> 批准</button>
-      </div>
-    </div>
-  </aside>
+        <!-- 确认卡浮层 -->
+        <div id="confirmCard" class="confirm-card hidden">
+            <div class="card-header"><i class="fas fa-exclamation-triangle"></i> 确认操作</div>
+            <div class="card-body">
+                <p><strong><i class="fas fa-tools"></i> 工具：</strong> <span id="confirmToolName"></span></p>
+                <p><strong><i class="fas fa-shield-alt"></i> 风险等级：</strong> <span id="confirmRisk"></span></p>
+                <p id="confirmDesc"></p>
+            </div>
+            <div class="card-actions">
+                <button id="rejectBtn" class="secondary"><i class="fas fa-times"></i> 拒绝</button>
+                <button id="approveBtn" class="primary"><i class="fas fa-check"></i> 批准</button>
+            </div>
+        </div>
+    </aside>
 </div>
 
 <script type="module" src="js/main.js"></script>
