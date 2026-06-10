@@ -5,6 +5,7 @@ export const store = {
   messages: [],
   automationMode: 'confirm',
   aiopsReportText: '',
+  uploadedDocs: [],
   pendingActions: [],
   listeners: [],
 
@@ -26,6 +27,11 @@ export const store = {
 
   addMessage(message) {
     this.messages = [...this.messages, message];
+    this.notify();
+  },
+
+  addUploadedDoc(doc) {
+    this.uploadedDocs = [doc, ...this.uploadedDocs.filter(item => item.name !== doc.name)];
     this.notify();
   },
 

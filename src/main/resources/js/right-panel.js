@@ -249,6 +249,7 @@ export function initRightPanel() {
   }
 
   runBtn.addEventListener('click', runAIOps);
+  window.addEventListener('aiops:run', runAIOps);
 
   // ---------- 确认卡逻辑（与第一步相同，保留）----------
   function showConfirmCard(action) {

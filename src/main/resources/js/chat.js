@@ -42,6 +42,7 @@ export function initChat(mountNode) {
   const voiceBtn = mountNode.querySelector('#voiceBtn');
   const statusNode = mountNode.querySelector('#chatStatus');
   const sendBtn = mountNode.querySelector('#sendBtn');
+  const sessionPill = mountNode.querySelector('.session-pill');
   const recognition = createSpeechRecognition(input, voiceBtn, statusNode);
 
   voiceBtn.addEventListener('click', () => {
@@ -67,7 +68,32 @@ export function initChat(mountNode) {
 
     input.value = '';
     autoResize(input);
+
+    if (question.startsWith('/')) {
+      window.dispatchEvent(new CustomEvent('command:execute', { detail: { raw: question } }));
+      return;
+    }
+
     await sendQuestion(question, { messagesNode, input, sendBtn, statusNode });
+  });
+
+  window.addEventListener('chat:submit', () => {
+    form.requestSubmit();
+  });
+
+  window.addEventListener('chat:clear', () => {
+    store.messages = [];
+    store.notify();
+    messagesNode.innerHTML = renderChatEmpty();
+    setStatus(statusNode, '');
+  });
+
+  window.addEventListener('chat:session-changed', () => {
+    if (sessionPill) {
+      sessionPill.textContent = store.sessionId;
+    }
+    messagesNode.innerHTML = renderChatEmpty();
+    setStatus(statusNode, '');
   });
 }
 
@@ -353,6 +379,15 @@ function setStatus(statusNode, message, isError = false) {
 
 function clearEmptyState(messagesNode) {
   messagesNode.querySelector('.chat-empty')?.remove();
+}
+
+function renderChatEmpty() {
+  return `
+    <div class="chat-empty">
+      <strong>New incident chat</strong>
+      <span>Describe an alert, paste a log symptom, or ask for the next response step.</span>
+    </div>
+  `;
 }
 
 function scrollToBottom(messagesNode) {
