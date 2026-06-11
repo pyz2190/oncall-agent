@@ -4,15 +4,28 @@ import { escapeHtml, highlight } from './dom.js';
 const SESSION_KEY = 'oncall.sessions';
 const UPLOAD_KEY = 'oncall.uploadedDocs';
 const MODES = ['manual', 'confirm', 'auto'];
+const DEFAULT_UI_PREFS = { theme: 'light', fontScale: 1, highContrast: false };
 
 const COMMANDS = [
-  { command: '/clear', title: 'Clear chat', description: 'Clear the current server session and local messages.' },
-  { command: '/aiops', title: 'Run AIOps', description: 'Start the right-panel diagnosis workflow.' },
-  { command: '/upload', title: 'Upload docs', description: 'Open the Markdown / text upload picker.' },
-  { command: '/help', title: 'Show help', description: 'List available slash commands and shortcuts.' },
-  { command: '/search', title: 'Search', description: 'Search chat, AIOps report text, and uploaded file names.' },
-  { command: '/mode', title: 'Set mode', description: 'Switch automation mode: manual, confirm, or auto.' }
+  { command: '/clear', title: '清空对话', description: '清空当前服务端会话和本地消息。' },
+  { command: '/aiops', title: '运行诊断', description: '启动右侧智能运维诊断流程。' },
+  { command: '/upload', title: '上传文档', description: '打开 Markdown 或文本知识库上传器。' },
+  { command: '/help', title: '查看帮助', description: '列出可用斜杠命令和快捷键。' },
+  { command: '/search', title: '本地搜索', description: '搜索对话、诊断报告和已上传文件名。' },
+  { command: '/mode', title: '切换档位', description: '切换自动化档位：手动、确认或自动。' }
 ];
+
+const MODE_LABELS = {
+  manual: '手动',
+  confirm: '确认',
+  auto: '自动'
+};
+
+const STATUS_LABELS = {
+  uploading: '上传中',
+  indexed: '已入库',
+  failed: '失败'
+};
 
 export function initCommand() {
   const sidebarNode = document.getElementById('leftSidebar');
@@ -26,11 +39,13 @@ export function initCommand() {
     paletteQuery: '',
     selectedIndex: 0,
     searchQuery: '',
-    status: ''
+    status: '',
+    uiPrefs: { ...DEFAULT_UI_PREFS, ...store.uiPrefs }
   };
+  applyUiPrefs(state.uiPrefs);
 
   if (!state.sessions.some(session => session.id === store.sessionId)) {
-    state.sessions.unshift(createSession(store.sessionId, 'Current session'));
+    state.sessions.unshift(createSession(store.sessionId, '当前会话'));
     saveSessions(state.sessions);
   }
   store.setState({ uploadedDocs: state.uploads });
@@ -47,6 +62,21 @@ export function initCommand() {
     sidebarNode.querySelector('#openUploadBtn')?.addEventListener('click', openUploadPicker);
     sidebarNode.querySelector('#openUploadDrop')?.addEventListener('click', openUploadPicker);
     sidebarNode.querySelector('#clearChatBtn')?.addEventListener('click', clearCurrentSession);
+    sidebarNode.querySelector('#themeToggleBtn')?.addEventListener('click', () => {
+      updateUiPrefs({ theme: state.uiPrefs.theme === 'dark' ? 'light' : 'dark' });
+    });
+    sidebarNode.querySelector('#fontDecreaseBtn')?.addEventListener('click', () => {
+      updateUiPrefs({ fontScale: Math.max(0.9, Number((state.uiPrefs.fontScale - 0.05).toFixed(2))) });
+    });
+    sidebarNode.querySelector('#fontIncreaseBtn')?.addEventListener('click', () => {
+      updateUiPrefs({ fontScale: Math.min(1.25, Number((state.uiPrefs.fontScale + 0.05).toFixed(2))) });
+    });
+    sidebarNode.querySelector('#contrastToggleBtn')?.addEventListener('click', () => {
+      updateUiPrefs({ highContrast: !state.uiPrefs.highContrast });
+    });
+    sidebarNode.querySelector('#resetA11yBtn')?.addEventListener('click', () => {
+      updateUiPrefs({ ...DEFAULT_UI_PREFS });
+    });
 
     sidebarNode.querySelector('#uploadInput')?.addEventListener('change', event => {
       uploadFiles([...event.target.files]);
@@ -82,16 +112,16 @@ export function initCommand() {
 
     paletteNode.innerHTML = `
       <div class="palette-backdrop" data-close-palette></div>
-      <section class="palette-dialog" role="dialog" aria-modal="true" aria-label="Command palette">
+      <section class="palette-dialog" role="dialog" aria-modal="true" aria-label="命令面板">
         <div class="palette-input-row">
           <span>/</span>
           <input id="paletteInput" autocomplete="off" spellcheck="false"
-            placeholder="Type a command or search text" value="${escapeHtml(state.paletteQuery).replace(/"/g, '&quot;')}">
+            placeholder="输入命令或搜索关键词" value="${escapeHtml(state.paletteQuery).replace(/"/g, '&quot;')}">
         </div>
         <div class="palette-results">
           ${matches.map((item, index) => renderPaletteItem(item, index === state.selectedIndex)).join('')}
         </div>
-        <div class="palette-help">Enter runs selected command. Esc closes. Ctrl/Cmd+K opens this panel.</div>
+        <div class="palette-help">回车执行选中命令，Esc 关闭，控制键或命令键 + K 打开此面板。</div>
       </section>
     `;
 
@@ -152,20 +182,20 @@ export function initCommand() {
       await clearCurrentSession();
     } else if (command === '/aiops') {
       closePalette();
-      state.status = 'AIOps diagnosis started.';
+      state.status = '已启动智能运维诊断。';
       window.dispatchEvent(new CustomEvent('aiops:run'));
       render();
     } else if (command === '/upload') {
       closePalette();
       openUploadPicker();
     } else if (command === '/help') {
-      state.status = 'Commands: /clear, /aiops, /upload, /search keyword, /mode manual|confirm|auto.';
+      state.status = '可用命令：/clear、/aiops、/upload、/search 关键词、/mode manual|confirm|auto。';
       render();
       openPalette('/');
     } else if (command === '/search') {
       closePalette();
       state.searchQuery = args;
-      state.status = args ? `Search results for "${args}".` : 'Type a keyword in the sidebar search box.';
+      state.status = args ? `正在搜索“${args}”。` : '请在左侧搜索框输入关键词。';
       render();
       sidebarNode.querySelector('#sidebarSearchInput')?.focus();
     } else if (command === '/mode') {
@@ -176,13 +206,13 @@ export function initCommand() {
       state.searchQuery = raw;
       render();
     } else {
-      state.status = `Unknown command: ${raw}`;
+      state.status = `未知命令：${raw}`;
       render();
     }
   }
 
   async function clearCurrentSession() {
-    state.status = 'Clearing current session...';
+    state.status = '正在清空当前会话...';
     render();
 
     try {
@@ -191,9 +221,9 @@ export function initCommand() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Id: store.sessionId })
       });
-      state.status = 'Current session cleared.';
+      state.status = '当前会话已清空。';
     } catch (error) {
-      state.status = `Local chat cleared. Server clear failed: ${error.message}`;
+      state.status = `本地对话已清空，服务端清空失败：${error.message}`;
     }
 
     store.setState({ messages: [] });
@@ -204,11 +234,11 @@ export function initCommand() {
 
   function newSession() {
     const nextId = 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-    const session = createSession(nextId, `Session ${state.sessions.length + 1}`);
+    const session = createSession(nextId, `会话 ${state.sessions.length + 1}`);
     state.sessions = [session, ...state.sessions];
     saveSessions(state.sessions);
     store.setState({ sessionId: nextId, messages: [] });
-    state.status = 'New session created.';
+    state.status = '已新建会话。';
     window.dispatchEvent(new CustomEvent('chat:session-changed'));
     render();
   }
@@ -217,7 +247,7 @@ export function initCommand() {
     if (!sessionId || sessionId === store.sessionId) return;
     store.setState({ sessionId, messages: [] });
     touchSession(sessionId);
-    state.status = `Switched to ${sessionId}.`;
+    state.status = `已切换到 ${sessionId}。`;
     window.dispatchEvent(new CustomEvent('chat:session-changed'));
     render();
   }
@@ -225,7 +255,7 @@ export function initCommand() {
   async function uploadFiles(files) {
     const candidates = files.filter(file => /\.(md|txt)$/i.test(file.name));
     if (files.length && !candidates.length) {
-      state.status = 'Only .md and .txt files are accepted by the backend.';
+      state.status = '后端仅支持上传 .md 和 .txt 文件。';
       render();
       return;
     }
@@ -233,7 +263,7 @@ export function initCommand() {
     for (const file of candidates) {
       const pendingDoc = createUploadRecord(file, 'uploading');
       upsertUpload(pendingDoc);
-      state.status = `Uploading ${file.name}...`;
+      state.status = `正在上传 ${file.name}...`;
       render();
 
       try {
@@ -257,7 +287,7 @@ export function initCommand() {
           status: 'indexed',
           uploadedAt: Date.now()
         });
-        state.status = `${file.name} uploaded and indexed.`;
+        state.status = `${file.name} 已上传并进入知识库。`;
       } catch (error) {
         upsertUpload({
           ...pendingDoc,
@@ -265,7 +295,7 @@ export function initCommand() {
           error: error.message,
           uploadedAt: Date.now()
         });
-        state.status = `${file.name} upload failed: ${error.message}`;
+        state.status = `${file.name} 上传失败：${error.message}`;
       }
       render();
     }
@@ -277,7 +307,7 @@ export function initCommand() {
 
   function setAutomationMode(mode) {
     if (!MODES.includes(mode)) {
-      state.status = 'Usage: /mode manual | confirm | auto';
+      state.status = '用法：/mode manual | confirm | auto';
       render();
       return;
     }
@@ -288,8 +318,18 @@ export function initCommand() {
     } else {
       store.setState({ automationMode: mode });
     }
-    state.status = `Automation mode set to ${mode}.`;
+    state.status = `自动化档位已切换为：${MODE_LABELS[mode] || mode}。`;
     render();
+  }
+
+  function updateUiPrefs(nextPrefs) {
+    state.uiPrefs = {
+      ...state.uiPrefs,
+      ...nextPrefs
+    };
+    applyUiPrefs(state.uiPrefs);
+    state.status = '可读性设置已更新。';
+    store.setUiPrefs(state.uiPrefs);
   }
 
   function upsertUpload(doc) {
@@ -335,7 +375,11 @@ export function initCommand() {
   });
 
   bindGlobalShortcuts();
-  store.subscribe(() => render());
+  store.subscribe((newStore) => {
+    state.uiPrefs = { ...DEFAULT_UI_PREFS, ...newStore.uiPrefs };
+    applyUiPrefs(state.uiPrefs);
+    render();
+  });
   render();
 }
 
@@ -348,20 +392,31 @@ function renderSidebar(state) {
     <div class="command-sidebar">
       <div class="command-topbar">
         <div>
-          <div class="sidebar-title">Command Center</div>
-          <div class="sidebar-subtitle">${messageCount} messages · ${uploadCount} docs</div>
+          <div class="sidebar-title">命令中心</div>
+          <div class="sidebar-subtitle">${messageCount} 条消息 · ${uploadCount} 份文档</div>
         </div>
-        <button id="newSessionBtn" class="icon-btn" title="New session">+</button>
+        <button id="newSessionBtn" class="icon-btn" title="新建会话">+</button>
       </div>
 
       <div class="command-actions">
-        <button id="openPaletteBtn" class="command-action">Ctrl/Cmd K <span>Palette</span></button>
-        <button id="openUploadBtn" class="command-action">Ctrl/Cmd U <span>Upload</span></button>
-        <button id="clearChatBtn" class="command-action">Ctrl/Cmd L <span>Clear</span></button>
+        <button id="openPaletteBtn" class="command-action" title="快捷键：控制键或命令键 + K"><span>命令面板</span></button>
+        <button id="openUploadBtn" class="command-action" title="快捷键：控制键或命令键 + U"><span>上传文档</span></button>
+        <button id="clearChatBtn" class="command-action" title="快捷键：控制键或命令键 + L"><span>清空对话</span></button>
       </div>
 
       <section class="sidebar-section">
-        <div class="section-label">Sessions</div>
+        <div class="section-label">可读性设置</div>
+        <div class="accessibility-controls">
+          <button id="themeToggleBtn" type="button">${state.uiPrefs.theme === 'dark' ? '浅色模式' : '深色模式'}</button>
+          <button id="fontDecreaseBtn" type="button">字号 -</button>
+          <button id="fontIncreaseBtn" type="button">字号 +</button>
+          <button id="contrastToggleBtn" type="button">${state.uiPrefs.highContrast ? '关闭高对比' : '高对比'}</button>
+          <button id="resetA11yBtn" type="button">恢复默认</button>
+        </div>
+      </section>
+
+      <section class="sidebar-section">
+        <div class="section-label">会话列表</div>
         <div class="session-list">
           ${state.sessions.map(session => `
             <button class="session-item ${session.id === store.sessionId ? 'active' : ''}" data-session-id="${escapeHtml(session.id)}">
@@ -373,28 +428,28 @@ function renderSidebar(state) {
       </section>
 
       <section class="sidebar-section">
-        <div class="section-label">Knowledge upload</div>
+        <div class="section-label">知识库上传</div>
         <input id="uploadInput" type="file" accept=".md,.txt" multiple hidden>
         <button class="upload-drop" id="openUploadDrop" type="button">
-          <strong>Upload .md / .txt</strong>
-          <span>Files are sent as multipart field "file".</span>
+          <strong>上传 .md / .txt</strong>
+          <span>文件会以 multipart 字段 file 发送到后端。</span>
         </button>
         <div class="upload-list">
-          ${state.uploads.slice(0, 8).map(doc => renderUpload(doc)).join('') || '<div class="muted">No uploaded docs yet.</div>'}
+          ${state.uploads.slice(0, 8).map(doc => renderUpload(doc)).join('') || '<div class="muted">暂未上传文档。</div>'}
         </div>
       </section>
 
       <section class="sidebar-section">
-        <div class="section-label">Local search</div>
+        <div class="section-label">本地搜索</div>
         <input id="sidebarSearchInput" class="sidebar-input" value="${escapeHtml(state.searchQuery).replace(/"/g, '&quot;')}"
-          placeholder="Search chat, report, uploads">
+          placeholder="搜索对话、报告、上传文档">
         <div class="search-results">
-          ${state.searchQuery ? renderSearchResults(results, state.searchQuery) : '<div class="muted">Use /search keyword or type here.</div>'}
+          ${state.searchQuery ? renderSearchResults(results, state.searchQuery) : '<div class="muted">使用 /search 关键词，或直接在这里输入。</div>'}
         </div>
       </section>
 
       <section class="sidebar-section">
-        <div class="section-label">Slash commands</div>
+        <div class="section-label">斜杠命令</div>
         <div class="command-list">
           ${COMMANDS.map(item => `
             <button data-run-command="${escapeHtml(item.command)}" class="mini-command">
@@ -417,13 +472,13 @@ function renderUpload(doc) {
         <strong>${escapeHtml(doc.name)}</strong>
         <small>${formatBytes(doc.size)} · ${formatTime(doc.uploadedAt)}</small>
       </div>
-      <span class="upload-status ${escapeHtml(doc.status)}">${escapeHtml(doc.status)}</span>
+      <span class="upload-status ${escapeHtml(doc.status)}">${escapeHtml(STATUS_LABELS[doc.status] || doc.status)}</span>
     </div>
   `;
 }
 
 function renderSearchResults(results, keyword) {
-  if (!results.length) return '<div class="muted">No matches found.</div>';
+  if (!results.length) return '<div class="muted">没有找到匹配结果。</div>';
   return results.slice(0, 12).map(result => `
     <button class="search-result" data-search-target="${escapeHtml(result.target)}">
       <span>${escapeHtml(result.source)}</span>
@@ -451,13 +506,13 @@ function filterCommands(query) {
 
   if (normalized.startsWith('/search ') || normalized.startsWith('search ')) {
     const keyword = query.replace(/^\/?search\s+/i, '');
-    return [{ command: `/search ${keyword}`, title: `Search "${keyword}"`, description: 'Search local chat, reports, and uploads.' }];
+    return [{ command: `/search ${keyword}`, title: `搜索“${keyword}”`, description: '搜索本地对话、报告和上传文档。' }];
   }
 
   if (normalized.startsWith('/mode ')) {
     const modeQuery = normalized.replace('/mode ', '').trim();
     const modes = MODES.filter(mode => !modeQuery || mode.startsWith(modeQuery));
-    return modes.map(mode => ({ command: `/mode ${mode}`, title: `Mode: ${mode}`, description: `Switch automation mode to ${mode}.` }));
+    return modes.map(mode => ({ command: `/mode ${mode}`, title: `档位：${MODE_LABELS[mode] || mode}`, description: `切换自动化档位为${MODE_LABELS[mode] || mode}。` }));
   }
 
   return COMMANDS.filter(item => (
@@ -476,8 +531,8 @@ function buildSearchResults(keyword) {
     const text = message.content || '';
     if (text.toLowerCase().includes(q.toLowerCase())) {
       results.push({
-        source: message.role === 'user' ? 'Chat: user' : 'Chat: agent',
-        title: message.role === 'user' ? 'User message' : 'Agent response',
+        source: message.role === 'user' ? '对话：用户' : '对话：智能体',
+        title: message.role === 'user' ? '用户消息' : '智能体回复',
         preview: makePreview(text, q),
         target: message.id
       });
@@ -486,8 +541,8 @@ function buildSearchResults(keyword) {
 
   if (store.aiopsReportText?.toLowerCase().includes(q.toLowerCase())) {
     results.push({
-      source: 'AIOps',
-      title: 'Diagnosis report',
+      source: '智能运维诊断',
+      title: '诊断报告',
       preview: makePreview(store.aiopsReportText, q),
       target: 'reportContainer'
     });
@@ -496,9 +551,9 @@ function buildSearchResults(keyword) {
   for (const doc of store.uploadedDocs || []) {
     if (doc.name?.toLowerCase().includes(q.toLowerCase())) {
       results.push({
-        source: 'Upload',
+        source: '上传文档',
         title: doc.name,
-        preview: `${doc.status} · ${formatBytes(doc.size)}`,
+        preview: `${STATUS_LABELS[doc.status] || doc.status} · ${formatBytes(doc.size)}`,
         target: `upload:${doc.name}`
       });
     }
@@ -572,6 +627,13 @@ function saveUploads(uploads) {
   localStorage.setItem(UPLOAD_KEY, JSON.stringify(uploads.slice(0, 30)));
 }
 
+function applyUiPrefs(prefs) {
+  const normalized = { ...DEFAULT_UI_PREFS, ...(prefs || {}) };
+  document.body.classList.toggle('theme-dark', normalized.theme === 'dark');
+  document.body.classList.toggle('high-contrast', Boolean(normalized.highContrast));
+  document.documentElement.style.setProperty('--app-font-scale', String(normalized.fontScale || 1));
+}
+
 function makePreview(text, keyword) {
   const value = String(text || '').replace(/\s+/g, ' ');
   const index = value.toLowerCase().indexOf(keyword.toLowerCase());
@@ -587,6 +649,6 @@ function formatBytes(size = 0) {
 }
 
 function formatTime(time) {
-  if (!time) return 'now';
+  if (!time) return '刚刚';
   return new Date(time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }

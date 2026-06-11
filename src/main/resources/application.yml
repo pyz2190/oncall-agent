@@ -26,17 +26,14 @@ spring:
       api-key: ${DASHSCOPE_API_KEY:your-api-key-here}
       chat:
         options:
-          timeout: 180000
+          timeout: 60000
       retry:
-        max-attempts: 3
+        max-attempts: 1
         backoff:
           initial-interval: 2000
           multiplier: 2
           max-interval: 10000
     
-    # Enable this block when a Tencent CLS MCP endpoint is available.
-    # For local demos the log tool uses mock data, so the placeholder endpoint
-    # does not need to be reachable.
     mcp:
       client:
         enabled: true
@@ -47,8 +44,8 @@ spring:
         sse:
           connections:
             tencent-cls:
-              url: https://mcp-api.tencent-cloud.com
-              sse-endpoint: /sse/92XXXXXXXXb4
+              url: http://localhost:3000
+              sse-endpoint: /sse
 
 # DashScope embedding settings
 dashscope:
@@ -74,5 +71,7 @@ prometheus:
   mock-enabled: true
 
 cls:
-  # Keep mock data enabled unless a Tencent CLS MCP service is configured.
-  mock-enabled: true
+  mock-enabled: false
+
+aiops:
+  analysis-timeout-seconds: 75

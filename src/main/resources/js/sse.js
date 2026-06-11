@@ -1,4 +1,12 @@
-export async function parseSSEStream(response, { onContent, onDone, onError } = {}) {
+export async function parseSSEStream(response, {
+  onContent,
+  onDone,
+  onError,
+  onAgentStep,
+  onActionRequired,
+  onActionStatus,
+  onReportData
+} = {}) {
   if (!response.body) {
     onError?.('接口没有返回可读取的流');
     return;
@@ -40,6 +48,14 @@ export async function parseSSEStream(response, { onContent, onDone, onError } = 
         } else if (msg.type === 'error') {
           onError?.(msg.data || '未知错误');
           return;
+        } else if (msg.type === 'agent_step') {
+          onAgentStep?.(msg.data || {});
+        } else if (msg.type === 'action_required') {
+          onActionRequired?.(msg.data || {});
+        } else if (msg.type === 'action_status') {
+          onActionStatus?.(msg.data || {});
+        } else if (msg.type === 'report_data') {
+          onReportData?.(msg.data || {});
         }
       } catch {
         onContent?.(raw);

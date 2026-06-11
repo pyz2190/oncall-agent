@@ -43,6 +43,9 @@ build/
 *.log
 app.log
 logs/
+work/
+.tools/
+%TMPBASE%/
 
 ### Upload Files ###
 uploads/

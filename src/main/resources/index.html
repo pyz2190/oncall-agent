@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OnCall Agent 控制台</title>
+    <title>智能 OnCall 助手控制台</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -24,14 +24,18 @@
         <div class="automation-bar">
             <span class="label">自动化档位</span>
             <div class="mode-switch">
-                <button data-mode="manual" class="mode-btn">Manual</button>
-                <button data-mode="confirm" class="mode-btn active">Confirm</button>
-                <button data-mode="auto" class="mode-btn">Auto</button>
+                <button data-mode="manual" class="mode-btn">手动</button>
+                <button data-mode="confirm" class="mode-btn active">确认</button>
+                <button data-mode="auto" class="mode-btn">自动</button>
             </div>
         </div>
 
         <div class="diagnosis-control">
-            <button id="runAIOpsBtn" class="primary-btn"><i class="fas fa-chart-line"></i> 运行 AIOps 诊断</button>
+            <button id="runAIOpsBtn" class="primary-btn"><i class="fas fa-chart-line"></i> 运行智能运维诊断</button>
+            <div class="report-actions">
+                <button id="exportMarkdownBtn" class="secondary-btn" type="button"><i class="fas fa-file-alt"></i> 导出 Markdown</button>
+                <button id="exportPdfBtn" class="secondary-btn" type="button"><i class="fas fa-file-pdf"></i> 导出 PDF</button>
+            </div>
         </div>
 
         <div id="reportContainer" class="report-container">

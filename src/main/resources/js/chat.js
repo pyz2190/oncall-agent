@@ -2,6 +2,11 @@ import { parseSSEStream } from './sse.js';
 import { API_BASE, store } from './store.js';
 
 const TIMELINE_LIMIT = 8;
+const EXAMPLE_PROMPTS = [
+  'ServiceUnavailable 告警应该怎么排查？',
+  '根据知识库总结一次 Pod CrashLoopBackOff 的处理步骤。',
+  '帮我生成一份数据库连接池耗尽的值班交接说明。'
+];
 
 export function initChat(mountNode) {
   if (!mountNode) return;
@@ -10,17 +15,24 @@ export function initChat(mountNode) {
     <section class="chat-shell">
       <header class="chat-header">
         <div>
-          <h1>OnCall Agent</h1>
-          <p>对话、诊断过程和证据会在这里连续呈现。</p>
+          <h1>智能 OnCall 助手</h1>
+          <p>对话、诊断过程、证据来源和交互反馈会在这里连续呈现。</p>
         </div>
         <div class="session-pill" title="当前会话 ID">${store.sessionId}</div>
       </header>
 
-      <div class="chat-messages" id="chatMessages">
-        <div class="chat-empty">
-          <strong>开始一次排障对话</strong>
-          <span>可以描述告警、日志现象，或询问下一步处理建议。</span>
+      <div class="chat-assist-row">
+        <div class="agent-status-bar" id="agentStatusBar" aria-live="polite">
+          <span class="status-dot"></span>
+          <span>状态：<strong id="agentStatusText">${escapeHtml(store.agentStatus)}</strong></span>
         </div>
+        <div class="context-strip" id="contextStrip" title="当前会话上下文">
+          上下文：${escapeHtml(store.contextSummary)}
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chatMessages">
+        ${renderChatEmpty()}
       </div>
 
       <form class="composer" id="chatComposer">
@@ -43,7 +55,22 @@ export function initChat(mountNode) {
   const statusNode = mountNode.querySelector('#chatStatus');
   const sendBtn = mountNode.querySelector('#sendBtn');
   const sessionPill = mountNode.querySelector('.session-pill');
+  const agentStatusBar = mountNode.querySelector('#agentStatusBar');
+  const agentStatusText = mountNode.querySelector('#agentStatusText');
+  const contextStrip = mountNode.querySelector('#contextStrip');
   const recognition = createSpeechRecognition(input, voiceBtn, statusNode);
+
+  bindEmptyStatePrompts(messagesNode, input);
+
+  const renderSharedState = () => {
+    const status = store.agentStatus || '就绪';
+    agentStatusText.textContent = status;
+    contextStrip.textContent = `上下文：${store.contextSummary || '暂无上下文'}`;
+    agentStatusBar.classList.toggle('is-working', /正在|连接|接收|检索|生成|思考/.test(status));
+    agentStatusBar.classList.toggle('is-error', /失败|错误/.test(status));
+  };
+  store.subscribe(renderSharedState);
+  renderSharedState();
 
   voiceBtn.addEventListener('click', () => {
     if (!recognition) {
@@ -83,8 +110,10 @@ export function initChat(mountNode) {
 
   window.addEventListener('chat:clear', () => {
     store.messages = [];
+    store.setContextSummary('暂无上下文');
     store.notify();
     messagesNode.innerHTML = renderChatEmpty();
+    bindEmptyStatePrompts(messagesNode, input);
     setStatus(statusNode, '');
   });
 
@@ -92,7 +121,9 @@ export function initChat(mountNode) {
     if (sessionPill) {
       sessionPill.textContent = store.sessionId;
     }
+    store.setContextSummary('暂无上下文');
     messagesNode.innerHTML = renderChatEmpty();
+    bindEmptyStatePrompts(messagesNode, input);
     setStatus(statusNode, '');
   });
 }
@@ -108,12 +139,14 @@ async function sendQuestion(question, view) {
     createdAt: Date.now()
   };
   store.addMessage(userMessage);
+  store.setContextSummary(buildContextSummary(question));
   appendMessage(messagesNode, userMessage);
 
   const assistantMessage = {
     id: makeId('assistant'),
     role: 'assistant',
     content: '',
+    question,
     createdAt: Date.now()
   };
   const assistantNode = appendMessage(messagesNode, assistantMessage, true);
@@ -125,6 +158,7 @@ async function sendQuestion(question, view) {
 
   let answer = '';
   let finished = false;
+  const structuredSteps = [];
 
   try {
     const response = await fetch(`${API_BASE}/chat_stream`, {
@@ -142,7 +176,7 @@ async function sendQuestion(question, view) {
         answer += chunk;
         assistantMessage.content = answer;
         contentNode.innerHTML = renderMarkdown(answer);
-        renderTimeline(timelineNode, buildTimeline(answer, false));
+        renderTimeline(timelineNode, structuredSteps.length ? structuredSteps : buildTimeline(answer, false));
         scrollToBottom(messagesNode);
         setStatus(statusNode, '正在接收回复...');
       },
@@ -151,9 +185,19 @@ async function sendQuestion(question, view) {
         finished = true;
         assistantMessage.content = answer || '已完成，但没有收到文本内容。';
         store.addMessage({ ...assistantMessage });
+        store.setContextSummary(buildContextSummary(question, assistantMessage.content));
         contentNode.innerHTML = renderMarkdown(assistantMessage.content);
-        renderTimeline(timelineNode, buildTimeline(assistantMessage.content, true));
-        setStatus(statusNode, '回复完成。');
+        renderTimeline(timelineNode, structuredSteps.length ? structuredSteps : buildTimeline(assistantMessage.content, true));
+        renderFeedback(assistantNode, assistantMessage, statusNode);
+        setStatus(statusNode, '正在检索知识库来源...');
+        loadEvidence(question, assistantMessage.id, assistantNode, statusNode);
+      },
+      onAgentStep(step) {
+        structuredSteps.push(normalizeAgentStep(step));
+        renderTimeline(timelineNode, structuredSteps);
+        if (step.label) {
+          setStatus(statusNode, `${step.label}...`);
+        }
       },
       onError(message) {
         throw new Error(message || '流式接口返回错误');
@@ -161,14 +205,32 @@ async function sendQuestion(question, view) {
     });
   } catch (error) {
     assistantMessage.content = `请求失败：${error.message}`;
+    store.addMessage({ ...assistantMessage });
     contentNode.innerHTML = escapeHtml(assistantMessage.content);
     assistantNode.classList.add('is-error');
+    renderFeedback(assistantNode, assistantMessage, statusNode);
     setStatus(statusNode, error.message, true);
   } finally {
     setBusy(input, sendBtn, false);
     input.focus();
     scrollToBottom(messagesNode);
   }
+}
+
+function normalizeAgentStep(step) {
+  const phase = step.phase || 'reason';
+  const time = step.timestamp
+    ? new Date(step.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    : new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+  return {
+    kind: phase,
+    label: step.label || timelineLabel(phase),
+    text: [step.detail, step.toolName ? `工具：${step.toolName}` : '', step.status ? `状态：${step.status}` : '']
+      .filter(Boolean)
+      .join('；'),
+    time
+  };
 }
 
 function appendMessage(messagesNode, message, withTimeline = false) {
@@ -180,16 +242,20 @@ function appendMessage(messagesNode, message, withTimeline = false) {
     hour: '2-digit',
     minute: '2-digit'
   });
+  const assistantExtras = message.role === 'assistant'
+    ? '<div class="evidence-slot"></div><div class="feedback-slot"></div>'
+    : '';
 
   row.innerHTML = `
     <div class="message-meta">
-      <span>${message.role === 'user' ? '你' : 'Agent'}</span>
+      <span>${message.role === 'user' ? '你' : '智能体'}</span>
       <time>${time}</time>
     </div>
     ${withTimeline ? '<div class="agent-timeline"></div>' : ''}
     <div class="message-bubble">
       <div class="message-content">${renderMarkdown(message.content)}</div>
     </div>
+    ${assistantExtras}
   `;
 
   messagesNode.appendChild(row);
@@ -225,7 +291,7 @@ function buildTimeline(text, complete) {
   if (nodes.length === 0) {
     nodes.push({
       kind: complete ? 'final' : 'reason',
-      label: complete ? 'Final' : 'Reason',
+      label: complete ? '最终回复' : '推理',
       text: complete ? '已汇总为最终回复。' : '正在根据可见上下文组织回复。',
       time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     });
@@ -254,7 +320,7 @@ function classifyTimelineSegment(segment, complete) {
 function renderTimeline(timelineNode, nodes) {
   timelineNode.innerHTML = `
     <details class="timeline-card" open>
-      <summary>Agent 过程时间线</summary>
+      <summary>智能体过程时间线</summary>
       <ol>
         ${nodes.map(node => `
           <li class="timeline-item ${node.kind}">
@@ -271,6 +337,138 @@ function renderTimeline(timelineNode, nodes) {
       </ol>
     </details>
   `;
+}
+
+function renderFeedback(row, message, statusNode) {
+  const slot = row.querySelector('.feedback-slot');
+  if (!slot) return;
+
+  const selected = store.feedback.find(item => item.messageId === message.id)?.type;
+  const options = [
+    { type: 'helpful', label: '👍 有帮助' },
+    { type: 'unhelpful', label: '👎 没帮助' },
+    { type: 'reasoning', label: '这步推理有问题' }
+  ];
+
+  slot.innerHTML = `
+    <div class="feedback-bar" aria-label="回答反馈">
+      <span>反馈</span>
+      ${options.map(option => `
+        <button type="button" class="feedback-btn ${selected === option.type ? 'active' : ''}"
+          data-feedback-type="${option.type}">
+          ${option.label}
+        </button>
+      `).join('')}
+      ${selected ? '<small>已记录到本地反馈。</small>' : ''}
+    </div>
+  `;
+
+  slot.querySelectorAll('[data-feedback-type]').forEach(button => {
+    button.addEventListener('click', () => {
+      const type = button.dataset.feedbackType;
+      store.addFeedback({
+        messageId: message.id,
+        sessionId: store.sessionId,
+        type,
+        question: message.question || '',
+        answer: message.content || ''
+      });
+      renderFeedback(row, message, statusNode);
+      setStatus(statusNode, '反馈已记录在本地。');
+      window.setTimeout(() => setStatus(statusNode, '就绪'), 1200);
+    });
+  });
+}
+
+async function loadEvidence(question, messageId, row, statusNode) {
+  const slot = row.querySelector('.evidence-slot');
+  if (!slot) return;
+
+  slot.innerHTML = '<div class="evidence-panel is-loading">正在检索知识库来源...</div>';
+
+  try {
+    const response = await fetch(`${API_BASE}/evidence/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: question, topK: 3 })
+    });
+    const payload = await response.json();
+    const evidenceItems = Array.isArray(payload.data) ? payload.data : [];
+    store.setEvidence(messageId, evidenceItems);
+    renderEvidence(row, messageId, evidenceItems, payload.code >= 400 ? payload.message : '');
+    setStatus(statusNode, evidenceItems.length ? '已关联知识库来源。' : '回复完成，未检索到知识库来源。');
+  } catch (error) {
+    renderEvidence(row, messageId, [], `证据检索失败：${error.message}`);
+    setStatus(statusNode, `证据检索失败：${error.message}`, true);
+  } finally {
+    window.setTimeout(() => {
+      if (!/失败|错误/.test(store.agentStatus)) {
+        store.setAgentStatus('就绪');
+      }
+    }, 1500);
+  }
+}
+
+function renderEvidence(row, messageId, evidenceItems, errorMessage = '') {
+  const slot = row.querySelector('.evidence-slot');
+  if (!slot) return;
+
+  if (!evidenceItems.length) {
+    slot.innerHTML = `
+      <div class="evidence-panel empty">
+        <strong>来源引用</strong>
+        <span>${escapeHtml(errorMessage || '暂无匹配的知识库片段。')}</span>
+      </div>
+    `;
+    return;
+  }
+
+  slot.innerHTML = `
+    <div class="evidence-panel">
+      <div class="evidence-head">
+        <strong>来源引用</strong>
+        <span>点击编号查看原文片段</span>
+      </div>
+      <div class="citation-list">
+        ${evidenceItems.map(item => `
+          <button type="button" class="citation-chip" data-source-index="${item.index}">
+            [${item.index}] ${escapeHtml(item.title || '知识库片段')}
+          </button>
+        `).join('')}
+      </div>
+      <div class="evidence-list">
+        ${evidenceItems.map(item => renderEvidenceCard(messageId, item)).join('')}
+      </div>
+    </div>
+  `;
+
+  slot.querySelectorAll('[data-source-index]').forEach(button => {
+    button.addEventListener('click', () => {
+      const detail = document.getElementById(sourceDomId(messageId, button.dataset.sourceIndex));
+      if (!detail) return;
+      detail.open = true;
+      detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      detail.classList.add('search-hit');
+      window.setTimeout(() => detail.classList.remove('search-hit'), 1200);
+    });
+  });
+}
+
+function renderEvidenceCard(messageId, item) {
+  return `
+    <details class="evidence-card" id="${sourceDomId(messageId, item.index)}">
+      <summary>
+        <span>[${item.index}] ${escapeHtml(item.title || '知识库片段')}</span>
+        <small>匹配分 ${Number(item.score || 0).toFixed(2)}</small>
+      </summary>
+      <p>${escapeHtml(item.snippet || '暂无片段内容。')}</p>
+      ${item.metadata ? `<code>${escapeHtml(item.metadata)}</code>` : ''}
+    </details>
+  `;
+}
+
+function sourceDomId(messageId, index) {
+  return `${messageId}-source-${index}`;
 }
 
 function createSpeechRecognition(input, voiceBtn, statusNode) {
@@ -353,7 +551,7 @@ function renderMarkdown(text) {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, char => ({
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
@@ -373,8 +571,12 @@ function setBusy(input, sendBtn, busy) {
 }
 
 function setStatus(statusNode, message, isError = false) {
-  statusNode.textContent = message;
+  statusNode.textContent = message || '';
   statusNode.classList.toggle('error', Boolean(isError));
+  const globalStatus = isError && message ? `错误：${message}` : (message || '就绪');
+  if (store.agentStatus !== globalStatus) {
+    store.setAgentStatus(globalStatus);
+  }
 }
 
 function clearEmptyState(messagesNode) {
@@ -384,10 +586,59 @@ function clearEmptyState(messagesNode) {
 function renderChatEmpty() {
   return `
     <div class="chat-empty">
-      <strong>New incident chat</strong>
-      <span>Describe an alert, paste a log symptom, or ask for the next response step.</span>
+      <strong>开始一次排障对话</strong>
+      <span>描述告警、粘贴日志现象，或询问下一步处理建议。</span>
+      <div class="onboarding-actions">
+        ${EXAMPLE_PROMPTS.map(prompt => `
+          <button type="button" class="example-chip" data-example-prompt="${escapeHtml(prompt).replace(/"/g, '&quot;')}">
+            ${escapeHtml(prompt)}
+          </button>
+        `).join('')}
+      </div>
+      <small>也可以先在左侧上传知识库文档，再让智能体按文档给出处理步骤。</small>
     </div>
   `;
+}
+
+function bindEmptyStatePrompts(messagesNode, input) {
+  messagesNode.querySelectorAll('[data-example-prompt]').forEach(button => {
+    button.addEventListener('click', () => {
+      input.value = button.dataset.examplePrompt || '';
+      autoResize(input);
+      input.focus();
+    });
+  });
+}
+
+function buildContextSummary(question, answer = '') {
+  const lastQuestion = question || [...store.messages].reverse().find(item => item.role === 'user')?.content || '';
+  const docs = (store.uploadedDocs || []).filter(doc => doc.status === 'indexed').length;
+  const issue = extractIssue(`${lastQuestion} ${answer}`);
+  const parts = [];
+
+  if (issue) parts.push(`正在排查 ${issue}`);
+  if (docs) parts.push(`已上传 ${docs} 份知识库文档`);
+  if (lastQuestion) parts.push(`最近问题：${truncate(lastQuestion, 32)}`);
+
+  return parts.join('；') || '暂无上下文';
+}
+
+function extractIssue(text) {
+  const patterns = [
+    /([A-Za-z][A-Za-z0-9_-]{2,40}(?:Error|Exception|Unavailable|Timeout|BackOff|Backlog))/,
+    /(ServiceUnavailable|CrashLoopBackOff|OOMKilled|连接池耗尽|证书过期|消息堆积|网络分区|日志查询|数据库|Pod)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = String(text || '').match(pattern);
+    if (match) return match[1];
+  }
+  return '';
+}
+
+function truncate(text, limit) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  return value.length > limit ? `${value.slice(0, limit)}...` : value;
 }
 
 function scrollToBottom(messagesNode) {
@@ -400,9 +651,9 @@ function makeId(prefix) {
 
 function timelineLabel(kind) {
   return {
-    reason: 'Reason',
-    action: 'Action',
-    observation: 'Observation',
-    final: 'Final'
+    reason: '推理',
+    action: '动作',
+    observation: '观察',
+    final: '结论'
   }[kind];
 }

@@ -95,6 +95,7 @@ public class ChatService {
         systemPromptBuilder.append("当用户需要查询公司内部文档、流程、最佳实践或技术指南时，使用 queryInternalDocs 工具。\n");
         systemPromptBuilder.append("当用户需要查询 Prometheus 告警、监控指标或系统告警状态时，使用 queryPrometheusAlerts 工具。\n");
         systemPromptBuilder.append("当用户需要查询腾讯云日志时，请调用腾讯云mcp服务查询,默认查询地域ap-guangzhou,查询时间范围为近一个月。\n\n");
+        systemPromptBuilder.append("如果回答使用了内部文档、日志或告警证据，请明确说明依据来自哪里，避免编造来源；没有证据时要说明需要补充数据。\n\n");
         
         // 添加历史消息
         if (!history.isEmpty()) {
@@ -155,6 +156,23 @@ public class ChatService {
      * @return 配置好的 ReactAgent
      */
     public ReactAgent createReactAgent(DashScopeChatModel chatModel, String systemPrompt) {
+        return createReactAgent(chatModel, systemPrompt, false);
+    }
+
+    public ReactAgent createReactAgent(DashScopeChatModel chatModel, String systemPrompt, boolean includeMcpTools) {
+        if (includeMcpTools) {
+            return createReactAgentWithMcpTools(chatModel, systemPrompt);
+        }
+
+        return ReactAgent.builder()
+                .name("intelligent_assistant")
+                .model(chatModel)
+                .systemPrompt(systemPrompt)
+                .methodTools(buildMethodToolsArray())
+                .build();
+    }
+
+    public ReactAgent createReactAgentWithMcpTools(DashScopeChatModel chatModel, String systemPrompt) {
         return ReactAgent.builder()
                 .name("intelligent_assistant")
                 .model(chatModel)
