@@ -41,67 +41,81 @@ export function initRightPanel() {
 
   // ---------- 报告解析函数 ----------
   function parseReportToCards(markdownText) {
-    // 默认结构
+    // 去除 markdown 标记的辅助函数
+    function stripMarkdown(text) {
+      return text.replace(/\*\*(.+?)\*\*/g, '$1')   // 去除粗体
+          .replace(/\*(.+?)\*/g, '$1')       // 去除斜体
+          .replace(/`(.+?)`/g, '$1')         // 去除行内代码
+          .trim();
+    }
+
     const result = {
-      alerts: [],
       alert: { name: '未知告警', time: '未知', severity: 'info' },
       rootCause: '未提取到根因分析',
       logEvidence: [],
       steps: [],
-      stats: { typeDistribution: {}, severityDistribution: {} }
+      stats: { typeDistribution: {}, severityDistribution: { critical: 0, warning: 0, info: 0 } }
     };
 
-    // 1. 告警名称/时间/严重度
-    const alertNameMatch = markdownText.match(/告警名称[：:]\s*(.+)/i) ||
-        markdownText.match(/#+\s*Alert Summary[\s\S]*?[-*]\s*(.+)/i);
-    if (alertNameMatch) result.alert.name = alertNameMatch[1].trim();
+    // 1. 提取告警名称、触发时间、严重度（支持 `- **字段**：值` 格式）
+    const nameMatch = markdownText.match(/告警名称[：:]\s*(.+)/i);
+    if (nameMatch) result.alert.name = stripMarkdown(nameMatch[1]);
 
     const timeMatch = markdownText.match(/触发时间[：:]\s*(.+)/i);
-    if (timeMatch) result.alert.time = timeMatch[1].trim();
+    if (timeMatch) result.alert.time = stripMarkdown(timeMatch[1]);
 
-    if (markdownText.includes('critical') || markdownText.includes('严重')) result.alert.severity = 'critical';
-    else if (markdownText.includes('warning') || markdownText.includes('警告')) result.alert.severity = 'warning';
-    else result.alert.severity = 'info';
-
-    result.alerts = parseMarkdownAlertRows(markdownText);
-    if (result.alerts.length) {
-      result.alert = {
-        name: result.alerts[0].name,
-        time: result.alerts[0].firstSeen || result.alerts[0].lastSeen || '未知',
-        severity: result.alerts[0].severity || 'info'
-      };
-      result.stats = buildStatsFromAlerts(result.alerts);
+    // 严重度：优先从 "严重度：xxx" 提取，否则关键词匹配
+    const severityMatch = markdownText.match(/严重度[：:]\s*(.+)/i);
+    if (severityMatch) {
+      const sev = severityMatch[1].trim().toLowerCase();
+      if (sev.includes('critical') || sev === '严重') result.alert.severity = 'critical';
+      else if (sev.includes('warning') || sev === '警告') result.alert.severity = 'warning';
+      else result.alert.severity = 'info';
+    } else {
+      // 降级关键词匹配
+      if (markdownText.includes('critical')) result.alert.severity = 'critical';
+      else if (markdownText.includes('warning')) result.alert.severity = 'warning';
+      else result.alert.severity = 'info';
     }
 
-    // 2. 根因分析 (## 根因分析 下的段落)
-    const rootCauseMatch = markdownText.match(/##?\s*根因分析\s*\n([\s\S]*?)(?=\n##|\n$)/i);
-    if (rootCauseMatch) result.rootCause = rootCauseMatch[1].trim();
+    // 2. 根因分析
+    const rootMatch = markdownText.match(/##?\s*根因分析\s*\n([\s\S]*?)(?=\n##|\n$)/i);
+    if (rootMatch) result.rootCause = stripMarkdown(rootMatch[1].trim());
 
-    // 3. 日志证据 (```log ... ``` 代码块)
+    // 3. 日志证据（代码块）
     const logBlock = markdownText.match(/```log([\s\S]*?)```/i);
     if (logBlock) {
       result.logEvidence = logBlock[1].split('\n').filter(l => l.trim().length > 0);
     } else {
-      // 尝试匹配普通代码块
       const anyCode = markdownText.match(/```([\s\S]*?)```/);
       if (anyCode) result.logEvidence = anyCode[1].split('\n').filter(l => l.trim());
     }
 
-    // 4. 处理步骤 (数字列表或 - [ ])
-    const stepMatches = [...markdownText.matchAll(/(?:^|\n)(?:\d+\.\s*|-\s*)\[?\s*\]?\s*(.+)/g)];
-    if (stepMatches.length) {
-      result.steps = stepMatches.map(m => m[1].trim());
+    // 4. 处理步骤：只提取 "## 处理步骤" 标题下的数字列表或 - 列表
+    const stepsSection = markdownText.match(/##?\s*处理步骤\s*\n([\s\S]*?)(?=\n##|\n$)/i);
+    if (stepsSection) {
+      const lines = stepsSection[1].split('\n');
+      const stepLines = lines.filter(line => line.match(/^\s*\d+\.\s+/) || line.match(/^\s*-\s+/));
+      result.steps = stepLines.map(line => stripMarkdown(line.replace(/^\s*\d+\.\s*/, '').replace(/^\s*-\s*/, '').trim()));
     } else {
-      // 备选：匹配 "步骤" 后的列表
-      const stepsSection = markdownText.match(/##?\s*处理步骤\s*\n([\s\S]*?)(?=\n##|\n$)/i);
-      if (stepsSection) {
-        const lines = stepsSection[1].split('\n');
-        result.steps = lines.filter(l => l.match(/^\s*[-*]\s/)).map(l => l.replace(/^\s*[-*]\s/, '').trim());
+      // 降级：全文匹配数字列表（但避免匹配到其他部分的数字）
+      const fallbackSteps = [...markdownText.matchAll(/(?:^|\n)(\d+\.\s+)([^\n]+)/g)];
+      if (fallbackSteps.length) {
+        result.steps = fallbackSteps.map(m => stripMarkdown(m[2]));
       }
     }
 
-    // 5. 统计信息（从报告中提取数字，或基于关键词构造示例数据）
-    // 为了图表展示美观，我们构造一些示例数据，实际可从报告中解析 "CPU:3, Memory:2" 等
+    // 5. 统计信息（模拟，可从报告关键词中提取）
+    const cpuCnt = (markdownText.match(/CPU/gi) || []).length || 2;
+    const memCnt = (markdownText.match(/内存|Memory/gi) || []).length || 1;
+    const netCnt = (markdownText.match(/网络|Network/gi) || []).length || 1;
+    result.stats.typeDistribution = { CPU: cpuCnt, Memory: memCnt, Network: netCnt };
+
+    const criticalCnt = (markdownText.match(/critical|严重/gi) || []).length || 1;
+    const warningCnt = (markdownText.match(/warning|警告/gi) || []).length || 2;
+    const infoCnt = (markdownText.match(/info|信息/gi) || []).length || 1;
+    result.stats.severityDistribution = { critical: criticalCnt, warning: warningCnt, info: infoCnt };
+
     return result;
   }
 
