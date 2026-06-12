@@ -3,6 +3,7 @@ import { escapeHtml, highlight } from './dom.js';
 
 const SESSION_KEY = 'oncall.sessions';
 const UPLOAD_KEY = 'oncall.uploadedDocs';
+const CURRENT_SESSION_KEY = 'oncall.currentSessionId';
 const MODES = ['manual', 'confirm', 'auto'];
 const DEFAULT_UI_PREFS = { theme: 'light', fontScale: 1, highContrast: false };
 
@@ -33,7 +34,7 @@ export function initCommand() {
   if (!sidebarNode || !paletteNode) return;
 
   const state = {
-    sessions: loadJson(SESSION_KEY, []),
+    sessions: normalizeSessions(loadJson(SESSION_KEY, []), store.sessionId),
     uploads: loadJson(UPLOAD_KEY, []),
     paletteOpen: false,
     paletteQuery: '',
@@ -44,10 +45,14 @@ export function initCommand() {
   };
   applyUiPrefs(state.uiPrefs);
 
-  if (!state.sessions.some(session => session.id === store.sessionId)) {
+  if (!state.sessions.length) {
     state.sessions.unshift(createSession(store.sessionId, '当前会话'));
     saveSessions(state.sessions);
+  } else if (!state.sessions.some(session => session.id === store.sessionId)) {
+    store.setState({ sessionId: state.sessions[0].id, messages: [] });
   }
+  saveSessions(state.sessions);
+  saveCurrentSession(store.sessionId);
   store.setState({ uploadedDocs: state.uploads });
 
   function render() {
@@ -91,6 +96,13 @@ export function initCommand() {
 
     sidebarNode.querySelectorAll('[data-session-id]').forEach(button => {
       button.addEventListener('click', () => switchSession(button.dataset.sessionId));
+    });
+
+    sidebarNode.querySelectorAll('[data-delete-session-id]').forEach(button => {
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        deleteSession(button.dataset.deleteSessionId);
+      });
     });
 
     sidebarNode.querySelectorAll('[data-run-command]').forEach(button => {
@@ -237,6 +249,7 @@ export function initCommand() {
     const session = createSession(nextId, `会话 ${state.sessions.length + 1}`);
     state.sessions = [session, ...state.sessions];
     saveSessions(state.sessions);
+    saveCurrentSession(nextId);
     store.setState({ sessionId: nextId, messages: [] });
     state.status = '已新建会话。';
     window.dispatchEvent(new CustomEvent('chat:session-changed'));
@@ -245,10 +258,43 @@ export function initCommand() {
 
   function switchSession(sessionId) {
     if (!sessionId || sessionId === store.sessionId) return;
+    saveCurrentSession(sessionId);
     store.setState({ sessionId, messages: [] });
-    touchSession(sessionId);
     state.status = `已切换到 ${sessionId}。`;
     window.dispatchEvent(new CustomEvent('chat:session-changed'));
+    render();
+  }
+
+  async function deleteSession(sessionId) {
+    if (!sessionId) return;
+    const session = state.sessions.find(item => item.id === sessionId);
+    const label = session?.name || sessionId;
+    const confirmed = window.confirm(`删除“${label}”？此操作会移除左侧会话记录，并清空服务端对应会话。`);
+    if (!confirmed) return;
+
+    try {
+      await fetch(`${API_BASE}/chat/session/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE'
+      });
+    } catch (error) {
+      console.warn(`[command] Failed to delete server session ${sessionId}`, error);
+    }
+
+    state.sessions = state.sessions.filter(item => item.id !== sessionId);
+    if (!state.sessions.length) {
+      const nextId = 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      state.sessions = [createSession(nextId, '当前会话')];
+    }
+
+    if (store.sessionId === sessionId) {
+      const next = state.sessions[0];
+      saveCurrentSession(next.id);
+      store.setState({ sessionId: next.id, messages: [] });
+      window.dispatchEvent(new CustomEvent('chat:session-changed'));
+    }
+
+    saveSessions(state.sessions);
+    state.status = `已删除会话：${label}。`;
     render();
   }
 
@@ -374,6 +420,11 @@ export function initCommand() {
     executeRaw(event.detail?.raw);
   });
 
+  window.addEventListener('chat:session-activity', () => {
+    touchSession(store.sessionId);
+    render();
+  });
+
   bindGlobalShortcuts();
   store.subscribe((newStore) => {
     state.uiPrefs = { ...DEFAULT_UI_PREFS, ...newStore.uiPrefs };
@@ -419,10 +470,13 @@ function renderSidebar(state) {
         <div class="section-label">会话列表</div>
         <div class="session-list">
           ${state.sessions.map(session => `
-            <button class="session-item ${session.id === store.sessionId ? 'active' : ''}" data-session-id="${escapeHtml(session.id)}">
-              <span>${escapeHtml(session.name)}</span>
-              <small>${formatTime(session.updatedAt)}</small>
-            </button>
+            <div class="session-row ${session.id === store.sessionId ? 'active' : ''}">
+              <button class="session-item" data-session-id="${escapeHtml(session.id)}" title="${escapeHtml(session.id)}">
+                <span>${escapeHtml(session.name)}</span>
+                <small>${formatTime(session.updatedAt)}</small>
+              </button>
+              <button class="session-delete-btn" type="button" data-delete-session-id="${escapeHtml(session.id)}" title="删除会话" aria-label="删除会话">×</button>
+            </div>
           `).join('')}
         </div>
       </section>
@@ -582,6 +636,32 @@ function createSession(id, name) {
   return { id, name, updatedAt: Date.now() };
 }
 
+function normalizeSessions(sessions, currentSessionId) {
+  const seen = new Set();
+  const currentSessions = [];
+  const others = [];
+
+  for (const session of sessions || []) {
+    if (!session?.id || seen.has(session.id)) continue;
+    seen.add(session.id);
+    const normalized = {
+      id: session.id,
+      name: session.name || '会话',
+      updatedAt: session.updatedAt || Date.now()
+    };
+    if (normalized.name === '当前会话') currentSessions.push(normalized);
+    else others.push(normalized);
+  }
+
+  if (currentSessions.length <= 1) {
+    return [...currentSessions, ...others];
+  }
+
+  const keepCurrent = currentSessions.find(item => item.id === currentSessionId);
+  const keepLatest = [...currentSessions].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  return [keepCurrent || keepLatest, ...others];
+}
+
 function createUploadRecord(file, status) {
   return {
     id: `${file.name}-${file.size}-${file.lastModified}`,
@@ -621,6 +701,10 @@ function loadJson(key, fallback) {
 
 function saveSessions(sessions) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(sessions.slice(0, 12)));
+}
+
+function saveCurrentSession(sessionId) {
+  localStorage.setItem(CURRENT_SESSION_KEY, sessionId);
 }
 
 function saveUploads(uploads) {

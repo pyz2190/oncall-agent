@@ -471,6 +471,24 @@ public class ChatController {
         }
     }
 
+    /**
+     * Deletes one chat session from the in-memory backend window.
+     */
+    @DeleteMapping("/chat/session/{sessionId}")
+    public ResponseEntity<ApiResponse<String>> deleteSession(@PathVariable("sessionId") String sessionId) {
+        try {
+            logger.info("收到删除会话请求 - SessionId: {}", sessionId);
+            SessionInfo removed = sessions.remove(sessionId);
+            if (removed == null) {
+                return ResponseEntity.ok(ApiResponse.success("会话不存在或已删除"));
+            }
+            return ResponseEntity.ok(ApiResponse.success("会话已删除"));
+        } catch (Exception e) {
+            logger.error("删除会话失败", e);
+            return ResponseEntity.ok(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     private SessionInfo getOrCreateSession(String sessionId) {
         if (sessionId == null || sessionId.isEmpty()) {
             sessionId = UUID.randomUUID().toString();

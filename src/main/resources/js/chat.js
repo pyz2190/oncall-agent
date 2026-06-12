@@ -139,6 +139,7 @@ async function sendQuestion(question, view) {
     createdAt: Date.now()
   };
   store.addMessage(userMessage);
+  window.dispatchEvent(new CustomEvent('chat:session-activity'));
   store.setContextSummary(buildContextSummary(question));
   appendMessage(messagesNode, userMessage);
 

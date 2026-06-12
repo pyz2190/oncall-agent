@@ -1086,17 +1086,46 @@ button {
     gap: 4px;
 }
 
-.session-item {
+.session-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 4px;
+    border-radius: 12px;
 }
 
-.session-item.active {
+.session-row.active {
     background: #d2e3fc;
     color: var(--primary);
+}
+
+.session-item {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 8px 10px 12px;
+}
+
+.session-delete-btn {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+}
+
+.session-delete-btn:hover {
+    background: rgba(234, 67, 53, 0.12);
+    color: var(--danger);
 }
 
 .session-item span,

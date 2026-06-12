@@ -2,6 +2,8 @@ export const API_BASE = '/api';
 
 const FEEDBACK_KEY = 'oncall.feedback';
 const UI_PREFS_KEY = 'oncall.uiPrefs';
+const SESSION_KEY = 'oncall.sessions';
+const CURRENT_SESSION_KEY = 'oncall.currentSessionId';
 
 function loadJson(key, fallback) {
   try {
@@ -15,8 +17,25 @@ function saveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function makeSessionId() {
+  return 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function initialSessionId() {
+  const sessions = loadJson(SESSION_KEY, []);
+  const current = localStorage.getItem(CURRENT_SESSION_KEY);
+
+  if (current && sessions.some(session => session.id === current)) {
+    return current;
+  }
+  if (sessions.length && sessions[0]?.id) {
+    return sessions[0].id;
+  }
+  return makeSessionId();
+}
+
 export const store = {
-  sessionId: 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+  sessionId: initialSessionId(),
   messages: [],
   automationMode: 'confirm',
   aiopsReportText: '',
@@ -42,6 +61,9 @@ export const store = {
 
   setState(newState) {
     Object.assign(this, newState);
+    if (newState.sessionId) {
+      localStorage.setItem(CURRENT_SESSION_KEY, newState.sessionId);
+    }
     this.notify();
   },
 
