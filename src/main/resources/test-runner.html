@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OnCall Agent - 测试模式（模拟后端）</title>
+    <!-- 引入原项目的样式 -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Chart.js 和 Font Awesome（如果原项目已有，可去掉，但这里重复无妨） -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* 添加一个测试工具栏，浮动在原界面之上，不干扰布局 */
+        .test-toolbar {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: #1e293b;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            display: flex;
+            gap: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border: 1px solid #475569;
+        }
+        .test-toolbar button {
+            background: #334155;
+            border: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.375rem;
+            color: white;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+        .test-toolbar button:hover {
+            background: #3b82f6;
+        }
+        .test-badge {
+            background: #f59e0b;
+            color: black;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+<!-- 原项目的 HTML 结构完全相同 -->
+<div class="app-container">
+    <aside class="sidebar left" id="leftSidebar">
+        <div class="sidebar-block">
+            <div class="sidebar-title">会话与资料</div>
+            <p>会话列表、知识库上传和命令面板将在这里维护。</p>
+        </div>
+    </aside>
+
+    <main class="chat-workspace" id="chatWorkspace"></main>
+
+    <aside class="sidebar right" id="rightPanel">
+        <div class="automation-bar">
+            <span class="label">自动化档位</span>
+            <div class="mode-switch">
+                <button data-mode="manual" class="mode-btn">手动</button>
+                <button data-mode="confirm" class="mode-btn active">确认</button>
+                <button data-mode="auto" class="mode-btn">自动</button>
+            </div>
+        </div>
+
+        <div class="diagnosis-control">
+            <button id="runAIOpsBtn" class="primary-btn"><i class="fas fa-chart-line"></i> 运行智能运维诊断</button>
+            <div class="report-actions">
+                <button id="exportMarkdownBtn" class="secondary-btn" type="button"><i class="fas fa-file-alt"></i> 导出 Markdown</button>
+                <button id="exportPdfBtn" class="secondary-btn" type="button"><i class="fas fa-file-pdf"></i> 导出 PDF</button>
+            </div>
+        </div>
+
+        <div id="reportContainer" class="report-container">
+            <div class="empty-state"><i class="fas fa-info-circle"></i> 点击上方按钮获取诊断报告</div>
+        </div>
+
+        <div id="confirmCard" class="confirm-card hidden">
+            <div class="card-header">
+                <i class="fas fa-exclamation-triangle"></i> 确认操作
+                <span id="queueCounter" style="font-size:0.7rem; color:#f59e0b; margin-left:8px; display:none;"></span>
+            </div>
+            <div class="card-body">
+                <p><strong><i class="fas fa-tools"></i> 工具：</strong> <span id="confirmToolName"></span></p>
+                <p><strong><i class="fas fa-shield-alt"></i> 风险等级：</strong> <span id="confirmRisk"></span></p>
+                <p id="confirmDesc"></p>
+            </div>
+            <div class="card-actions">
+                <button id="rejectBtn" class="secondary"><i class="fas fa-times"></i> 拒绝</button>
+                <button id="approveBtn" class="primary"><i class="fas fa-check"></i> 批准</button>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<!-- 测试工具栏 -->
+<div class="test-toolbar">
+    <span class="test-badge"><i class="fas fa-flask"></i> 测试模式</span>
+    <button id="testSimulateActionBtn"><i class="fas fa-code-branch"></i> 模拟 Agent Action</button>
+    <button id="testEmptyReportBtn"><i class="fas fa-file-alt"></i> 切换空报告</button>
+    <button id="testResetReportBtn"><i class="fas fa-undo"></i> 重置为标准报告</button>
+</div>
+
+<!-- 先加载 mock 劫持，再加载原业务入口 -->
+<script src="test-mock.js"></script>
+<script type="module">
+    // 动态导入原项目的 main.js（假设 main.js 负责初始化所有面板）
+    // 注意：需要确保原项目文件路径正确，这里假设 js/main.js 存在且导出 init 或直接执行副作用
+    import './js/main.js';
+
+    // 等待 store 挂载到 window（原 main.js 可能会挂载 window.store，如果没有，可以通过模块导入）
+    // 由于 main.js 中可能没有显式导出，我们等待一段时间后从 window 获取
+    setTimeout(() => {
+        if (window.store) {
+            console.log('[Test] 已连接到全局 store');
+        } else {
+            console.warn('[Test] 未找到 window.store，请确保原项目 main.js 将 store 挂载到全局');
+        }
+    }, 500);
+
+    // 绑定测试按钮事件
+    document.getElementById('testSimulateActionBtn').addEventListener('click', () => {
+        if (window.simulateAgentAction) window.simulateAgentAction();
+        else alert('simulateAgentAction 未定义，请检查 test-mock.js 是否加载');
+    });
+    document.getElementById('testEmptyReportBtn').addEventListener('click', () => {
+        if (window.setMockEmptyReport) {
+            window.setMockEmptyReport(true);
+            alert('已切换为空报告，下次点击“运行 AIOps 诊断”将返回空报告');
+        }
+    });
+    document.getElementById('testResetReportBtn').addEventListener('click', () => {
+        if (window.setMockEmptyReport) {
+            window.setMockEmptyReport(false);
+            alert('已恢复标准报告');
+        }
+    });
+</script>
+</body>
+</html>
